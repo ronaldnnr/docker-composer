@@ -1,0 +1,118 @@
+<?php
+
+   session_start();
+   
+  /*
+   *    CARINHO DE COMPRAS
+   *            
+   *   Autor: Ronald
+   *   Data Versão: 15/10/2020
+   *   Data Atualização: 15/10/2020 
+   */
+   
+   require 'predis/autoload.php';
+   
+   
+   /******** CONFIGURAÇÃO DO BANCO DE DADOS ***************/
+   
+   $VGhost= "db";     // Host do banco de dados  
+   $VGuser = "root";     // Usuário do banco de dados
+   $VGpassword = "senha";    // Senha do banco de dados
+   $VGBanco = "banco_2";      // Nome do banco de dados
+   
+   $dsn = "mysql:dbname=".$VGBanco.";host=".$VGhost;
+
+   
+  
+   // Destruir a sessão caso seja informada via GET (O parametro limpa)
+	if (isset($_GET['limpa'])){
+	  $_SESSION = array();
+	  $_GET = array();
+	  die("Sessão destruída.");
+	}  
+
+   // Criando a conexão com o banco de dados com PDO	
+  
+   try {
+    $conn = new PDO($dsn, $VGuser, $VGpassword, $opcoes);
+	
+	 // Verificar se o código do cliente existe
+	if (!isset($_SESSION['cd_cliente'])){
+      $cd_cliente = rand(1,2001);
+      $_SESSION['fl_valor'] = rand(1000,99999)/100;
+	  
+	   // Carregar dados do cliente da session 
+	   $QuerySql = "SELECT * FROM clientes WHERE cd_cliente='".$cd_cliente."'";
+	   $rs = $conn->prepare($QuerySql); // Preparando a consulta SQL
+	   if($rs->execute()){     // Executando a consulta SQL
+	   
+		  /*  Caso encontre mais de um registro na consulta irá retornar os dados
+		   * neste caso é interessante só encontrar um registro e fazer a validação 
+		   * uma validação também mesmo se na modelagem do banco possua validacao nos campos chaves
+		   * este comentario vale para o bloco da linha 54 a
+		   */
+		 if($rs->rowCount() > 0){                             
+			 while($row = $rs->fetch(PDO::FETCH_OBJ)){		 
+				
+				echo " Código: " .$row->cd_cliente. " - Nome: " . $row->st_nome."<br>";							                   
+															   
+			 }	
+
+                                /******** CONFIGURAÇÃO DO REDIS ***************/
+
+			$client_redis = new Predis\Client(array(
+			  'host' => '192.168.0.11', // IP SERVIDOR REDIS
+			  'port' => 6379, // PORTA SERVIDOR REDIS
+			  'password' => 'Redis2019!' // SENHA SERVIDOR REDIS
+			));
+
+			$client_redis->hset($_SESSION['cd_sessao'], 'sessao', $_SESSION['cd_sessao']);
+			$client_redis->hset($_SESSION['cd_sessao'], 'codigo', $_SESSION['cd_cliente']);
+			$client_redis->hset($_SESSION['cd_sessao'], 'nome', $_SESSION['st_nome']);
+			$client_redis->hset($_SESSION['cd_sessao'], 'valor', $_SESSION['fl_valor']);			 
+			  
+		  } else {
+            echo "Nenhum cliente localizado com o código informado";
+          }			  
+			
+
+		  $cd_cliente = $_SESSION['cd_cliente'];
+		  $fl_valor = $_SESSION['fl_valor'];
+          $QuerySql="";
+		  $QuerySql = "INSERT INTO carrinho (cd_cliente, fl_valor) VALUES ('$cd_cliente', '$fl_valor')";
+		  $conn->prepare($QuerySql);
+		  if($rs->execute()){
+			echo "Valor total do carrinho: R$ ".$fl_valor;
+			$cd_carrinho = $conn->insert_id;
+			$client_redis->hset($_SESSION['cd_sessao'], 'codigo_carrinho', $cd_carrinho);
+			  
+		  } else {
+              echo "Erro ao inserir no carrinho de compra";
+          }			  
+		  
+		  
+		  
+	   } else { // Caso o comando SQL seja montado de forma errada
+          echo "Erro ao executar consulta SQL";
+	   }		   
+	   
+     
+	  
+	
+	} else {  // Não entendi bem esse ELSE em seu código só repetir ele.
+		echo "Sessão: " . $_SESSION['cd_sessao'] . " - Código: ". $_SESSION["cd_cliente"]. " - Nome: ". $_SESSION["st_nome"]. "- Valor: R$ ". $_SESSION['fl_valor'].  "<br>";
+	}		
+	
+	
+//	$conn->close(null);
+	
+	} catch (PDOException $e) {
+		echo "Erro ao conectar com banco de dados: " . $e->getMessage();
+	}
+   
+   
+    
+
+
+
+?>
